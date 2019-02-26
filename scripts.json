@@ -1,0 +1,4 @@
+{
+    "Google Chrome": "tell application \"Google Chrome\" to return URL of active tab of front window",
+    "Safari": "tell application \"Safari\" to return URL of front document"
+}

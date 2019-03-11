@@ -1,13 +1,13 @@
 import json
+import time
 import threading
+from urllib.parse import urlparse
+
 from PyObjCTools import AppHelper
 from Foundation import NSObject, NSKeyValueObservingOptionNew, NSKeyValueChangeNewKey
 from Foundation import NSRunLoop, NSDate
 from AppKit import NSApplication, NSApp, NSWorkspace
 from subprocess import Popen, PIPE
-
-
-active_url = None
 
 
 class Observer(NSObject):
@@ -20,10 +20,15 @@ class Observer(NSObject):
 
 
 class FrontMostAppObserver:
+    lastActivityBundleIdentifier = None
+    lastActivityLocalizedName = None
+    lastActivityIsBrowser = None
+    lastActivityUrl = None
+    lastActivityTimestamp = None
+
     def __init__(self):
-        self.observer = Observer.alloc().init().observe_(self.observerCallback)
-        NSWorkspace.sharedWorkspace().addObserver_forKeyPath_options_context_(
-            self.observer, "frontmostApplication", NSKeyValueObservingOptionNew, 0)
+        self.loadBrowserScripts()
+        self.setupObserver()
 
     def __enter__(self):
         return self
@@ -32,33 +37,69 @@ class FrontMostAppObserver:
         NSWorkspace.sharedWorkspace().removeObserver_forKeyPath_(
             self.observer, "frontmostApplication")
 
+    def setupObserver(self):
+        # Invoke callback with initial app
+        self.observerCallback(
+            NSWorkspace.sharedWorkspace().frontmostApplication())
+
+        self.observer = Observer.alloc().init().observe_(self.observerCallback)
+        NSWorkspace.sharedWorkspace().addObserver_forKeyPath_options_context_(
+            self.observer, "frontmostApplication", NSKeyValueObservingOptionNew, 0)
+
+    def loadBrowserScripts(self):
+        with open('scripts.json') as f:
+            self.browserScripts = json.load(f)
+
     def observerCallback(self, frontmostApplication):
-        global active_url
         self.localizedName = frontmostApplication.localizedName()
         self.bundleIdentifier = frontmostApplication.bundleIdentifier()
-        self.isBrowser = True if self.localizedName in active_url else False
-        if (self.isBrowser):
-            self.getBrowserTabTitle()
+        self.isBrowser = True if self.localizedName in self.browserScripts else False
 
-    def getBrowserTabTitle(self):
-        global active_url
-        if not self.isBrowser:
-            return
-        script = active_url[self.localizedName]
+        if (self.isBrowser):
+            self.browserCallback()
+        else:
+            # unnecessary ?
+            if self.lastActivityBundleIdentifier != self.bundleIdentifier:
+                self.addEntry()
+
+    def execAppleScript(self, script):
         p = Popen(['osascript', '-'], stdin=PIPE, stdout=PIPE,
                   stderr=PIPE, universal_newlines=True)
         stdout, stderr = p.communicate(script)
-        print(stdout, stderr)
-        threading.Timer(1, self.getBrowserTabTitle).start()
+        if not stderr:
+            return stdout
 
+    def browserCallback(self):
+        if not self.isBrowser:
+            return
 
-def loadJson():
-    global active_url
-    with open('scripts.json') as f:
-        active_url = json.load(f)
+        browserScript = self.browserScripts[self.localizedName]
+        self.url = self.execAppleScript(browserScript)
+        if self.lastActivityUrl != self.url or self.lastActivityBundleIdentifier != self.bundleIdentifier:
+            self.addEntry()
+
+        # Keep polling while browser is open
+        #threading.Timer(30, self.browserCallback).start()
+
+    def addEntry(self):
+        currTime = time.time()
+
+        print (self.lastActivityBundleIdentifier, self.lastActivityLocalizedName,
+               self.lastActivityIsBrowser, self.lastActivityUrl, self.lastActivityTimestamp, currTime)
+
+        if self.lastActivityIsBrowser:
+            self.lastActivityUrl = self.url
+            # uri_parsed = urlparse(uri)
+            # domain = '{uri.netloc}'.format(uri=uri_parsed)
+        else:
+            self.lastActivityUrl = None
+
+        self.lastActivityBundleIdentifier = self.bundleIdentifier
+        self.lastActivityLocalizedName = self.localizedName
+        self.lastActivityIsBrowser = self.isBrowser
+        self.lastActivityTimestamp = currTime
 
 
 def runMac():
-    loadJson()
-    with FrontMostAppObserver() as frontMostAppObserver:
+    with FrontMostAppObserver():
         AppHelper.runConsoleEventLoop(installInterrupt=True)

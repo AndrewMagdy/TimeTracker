@@ -1,5 +1,5 @@
 import sys
-from db import initDB
+from db import DB
 
 if sys.platform == "darwin":
     from mac import runMac 
@@ -8,8 +8,9 @@ elif sys.platform in ['Windows', 'win32', 'cygwin']:
 
 def main():
     #initDB()
+    db = DB()
     if sys.platform == "darwin":
-        runMac()
+        runMac(db)
     elif sys.platform in ['Windows', 'win32', 'cygwin']:
         runWindows()
 

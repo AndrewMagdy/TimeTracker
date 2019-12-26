@@ -25,8 +25,10 @@ class FrontMostAppObserver:
     lastActivityIsBrowser = None
     lastActivityUrl = None
     lastActivityTimestamp = None
+    db = None
 
-    def __init__(self):
+    def __init__(self, db):
+        self.db = db
         self.loadBrowserScripts()
         self.setupObserver()
 
@@ -54,13 +56,11 @@ class FrontMostAppObserver:
         self.localizedName = frontmostApplication.localizedName()
         self.bundleIdentifier = frontmostApplication.bundleIdentifier()
         self.isBrowser = True if self.localizedName in self.browserScripts else False
-
-        if (self.isBrowser):
+        
+        if self.isBrowser:
             self.browserCallback()
         else:
-            # unnecessary ?
-            if self.lastActivityBundleIdentifier != self.bundleIdentifier:
-                self.addEntry()
+            self.addEntry()
 
     def execAppleScript(self, script):
         p = Popen(['osascript', '-'], stdin=PIPE, stdout=PIPE,
@@ -71,35 +71,39 @@ class FrontMostAppObserver:
 
     def browserCallback(self):
         if not self.isBrowser:
+            self.url = None
             return
 
         browserScript = self.browserScripts[self.localizedName]
         self.url = self.execAppleScript(browserScript)
+
         if self.lastActivityUrl != self.url or self.lastActivityBundleIdentifier != self.bundleIdentifier:
             self.addEntry()
-
-        # Keep polling while browser is open
-        #threading.Timer(30, self.browserCallback).start()
+        
+        threading.Timer(1, self.browserCallback).start() # Keep polling while browser is open
 
     def addEntry(self):
         currTime = time.time()
 
         print (self.lastActivityBundleIdentifier, self.lastActivityLocalizedName,
                self.lastActivityIsBrowser, self.lastActivityUrl, self.lastActivityTimestamp, currTime)
+        
+        if self.lastActivityBundleIdentifier: 
+            self.db.addEntry(self.lastActivityBundleIdentifier,
+                self.lastActivityTimestamp, currTime, self.lastActivityIsBrowser, self.lastActivityUrl)
 
-        if self.lastActivityIsBrowser:
+        self.lastActivityBundleIdentifier = self.bundleIdentifier
+        self.lastActivityLocalizedName = self.localizedName
+        self.lastActivityIsBrowser = self.isBrowser
+        self.lastActivityTimestamp = currTime
+        if self.isBrowser:
             self.lastActivityUrl = self.url
             # uri_parsed = urlparse(uri)
             # domain = '{uri.netloc}'.format(uri=uri_parsed)
         else:
             self.lastActivityUrl = None
 
-        self.lastActivityBundleIdentifier = self.bundleIdentifier
-        self.lastActivityLocalizedName = self.localizedName
-        self.lastActivityIsBrowser = self.isBrowser
-        self.lastActivityTimestamp = currTime
 
-
-def runMac():
-    with FrontMostAppObserver():
+def runMac(db):
+    with FrontMostAppObserver(db):
         AppHelper.runConsoleEventLoop(installInterrupt=True)

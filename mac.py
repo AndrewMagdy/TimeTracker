@@ -76,11 +76,11 @@ class FrontMostAppObserver:
 
         browserScript = self.browserScripts[self.localizedName]
         self.url = self.execAppleScript(browserScript)
-
+        
         if self.lastActivityUrl != self.url or self.lastActivityBundleIdentifier != self.bundleIdentifier:
             self.addEntry()
         
-        threading.Timer(1, self.browserCallback).start() # Keep polling while browser is open
+        threading.Timer(5, self.browserCallback).start() # Keep polling while browser is open
 
     def addEntry(self):
         currTime = time.time()
@@ -89,7 +89,7 @@ class FrontMostAppObserver:
                self.lastActivityIsBrowser, self.lastActivityUrl, self.lastActivityTimestamp, currTime)
         
         if self.lastActivityBundleIdentifier: 
-            self.db.addEntry(self.lastActivityBundleIdentifier,
+            self.db.addEntry(self.lastActivityBundleIdentifier,self.lastActivityLocalizedName,
                 self.lastActivityTimestamp, currTime, self.lastActivityIsBrowser, self.lastActivityUrl)
 
         self.lastActivityBundleIdentifier = self.bundleIdentifier

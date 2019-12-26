@@ -1,9 +1,11 @@
 import sqlite3
+from uriUtils import domainFromUri
+
 dbFileName = "timesheet.db"
 
 class DB:
     conn = None
-    dbFileName = "timesheet.db"
+    dbFileName = "timesheet2.db"
 
     def __init__(self):
         self.create_connection()
@@ -26,45 +28,64 @@ class DB:
         except Exception as e:
             print(e)
 
-    def createActivity(self, activity):
+    def createActivity(self, activityBundleIdentifier, activityLocalizedName):
         """
         Create a new activity into the activities table
         :param activity:
         :return: activity id
         """
-        sql = 'SELECT * FROM activities WHERE name=?'
+        sql = 'SELECT * FROM activities WHERE activityBundleIdentifier=?'
         cur =  self.conn.cursor()
-        cur.execute(sql, (activity,))
+        cur.execute(sql, (activityBundleIdentifier,))
         entry = cur.fetchone()
 
         if entry is None:
-            sql = ''' INSERT INTO activities(name, extraInfo)
+            sql = ''' INSERT INTO activities(activityBundleIdentifier, activityLocalizedName)
                 VALUES(?,?) '''
-            cur.execute(sql, (activity, ""))
+            cur.execute(sql, (activityBundleIdentifier, activityLocalizedName))
             entry = cur.lastrowid
         else:
             entry = entry['id']
         
         return entry
 
-
-    def createSegment(self, activityId, startTime, endTime, browser, url):
-        sql = ''' INSERT INTO segments(activity_id, startTime, endTime, browser, url)
-                VALUES(?,?,?,?,?) '''
+    def createDomain(self, uri):
+        domain = domainFromUri(uri)
+        sql = 'SELECT * FROM domains WHERE domain=?'
         cur =  self.conn.cursor()
-        cur.execute(sql, (activityId, startTime, endTime, browser, url))
+        cur.execute(sql, (domain,))
+        entry = cur.fetchone()
+
+        if entry is None:
+            sql = ''' INSERT INTO domains(domain)
+                VALUES(?) '''
+            cur.execute(sql, (domain,))
+            entry = cur.lastrowid
+        else:
+            entry = entry['id']
+        
+        return entry
+
+    def createSegment(self, activityId, domainId, startTime, endTime, url):
+        sql = ''' INSERT INTO segments(activityId, domainId, startTime, endTime, url)
+                VALUES(?,?,?,?, ?) '''
+        cur =  self.conn.cursor()
+        cur.execute(sql, (activityId, domainId, startTime, endTime, url))
         entry = cur.lastrowid
 
         return entry
 
-    def addEntry(self, activity, startTime, endTime, browser, url):
+
+    def addEntry(self, activityBundleIdentifier, activityLocalizedName, startTime, endTime, isBrowser, url):
         try:
-            activityId = self.createActivity(activity)
-            print ("Activity ID", activityId)
-            entry = self.createSegment(activityId, startTime, endTime, browser, url)
-            print ('HEllo', entry)
+            activityId = self.createActivity(activityBundleIdentifier, activityLocalizedName)
+            domainId = None
+
+            if isBrowser:
+                domainId = self.createDomain(url)
+
+            self.createSegment(activityId, domainId, startTime, endTime, url)
             self.conn.commit()
-            return entry
         except Exception as e:
             self.conn.rollback()
             print(e)
@@ -73,22 +94,29 @@ class DB:
     def initDB(self):
         sql_create_activities_table = """ CREATE TABLE IF NOT EXISTS activities (
                                             id integer PRIMARY KEY,
-                                            name text NOT NULL,
-                                            extraInfo text
+                                            activityBundleIdentifier text NOT NULL,
+                                            activityLocalizedName text NOT NULL
                                         ); """
 
         sql_create_segments_table = """CREATE TABLE IF NOT EXISTS segments (
                                         id integer PRIMARY KEY,
-                                        activity_id integer NOT NULL,
+                                        activityId integer NOT NULL,
+                                        domainId integer,
                                         startTime integer NOT NULL,
                                         endTime integer NOT NULL,
-                                        browser text,
                                         url text,
-                                        FOREIGN KEY (activity_id) REFERENCES activities (id)
+                                        FOREIGN KEY (activityId) REFERENCES activities (id)
+                                    );"""
+
+
+        sql_create_domains_table = """CREATE TABLE IF NOT EXISTS domains (
+                                        id integer PRIMARY KEY,
+                                        domain text NOT NULL
                                     );"""
 
         if self.conn is not None:
             self.create_table(sql_create_activities_table)
             self.create_table(sql_create_segments_table)
+            self.create_table(sql_create_domains_table)
         else:
             print("Error! cannot create the database connection.")

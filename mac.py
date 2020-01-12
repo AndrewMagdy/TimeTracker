@@ -9,6 +9,8 @@ from Foundation import NSRunLoop, NSDate
 from AppKit import NSApplication, NSApp, NSWorkspace
 from subprocess import Popen, PIPE
 
+import db
+
 
 class Observer(NSObject):
     def observe_(self, callback):
@@ -25,10 +27,8 @@ class FrontMostAppObserver:
     lastActivityIsBrowser = None
     lastActivityUrl = None
     lastActivityTimestamp = None
-    db = None
 
-    def __init__(self, db):
-        self.db = db
+    def __init__(self):
         self.loadBrowserScripts()
         self.setupObserver()
 
@@ -56,7 +56,7 @@ class FrontMostAppObserver:
         self.localizedName = frontmostApplication.localizedName()
         self.bundleIdentifier = frontmostApplication.bundleIdentifier()
         self.isBrowser = True if self.localizedName in self.browserScripts else False
-        
+
         if self.isBrowser:
             self.browserCallback()
         else:
@@ -76,21 +76,22 @@ class FrontMostAppObserver:
 
         browserScript = self.browserScripts[self.localizedName]
         self.url = self.execAppleScript(browserScript)
-        
+
         if self.lastActivityUrl != self.url or self.lastActivityBundleIdentifier != self.bundleIdentifier:
             self.addEntry()
-        
-        threading.Timer(5, self.browserCallback).start() # Keep polling while browser is open
+
+        # Keep polling while browser is open
+        threading.Timer(5, self.browserCallback).start()
 
     def addEntry(self):
         currTime = time.time()
 
         print (self.lastActivityBundleIdentifier, self.lastActivityLocalizedName,
-               self.lastActivityIsBrowser, self.lastActivityUrl, self.lastActivityTimestamp, currTime)
-        
-        if self.lastActivityBundleIdentifier: 
-            self.db.addEntry(self.lastActivityBundleIdentifier,self.lastActivityLocalizedName,
-                self.lastActivityTimestamp, currTime, self.lastActivityIsBrowser, self.lastActivityUrl)
+               self.lastActivityIsBrowser, self.lastActivityUrl, self.lastActivityTimestamp, currTime, flush=True)
+
+        if self.lastActivityBundleIdentifier:
+            db.addEntry(self.lastActivityBundleIdentifier, self.lastActivityLocalizedName,
+                             self.lastActivityTimestamp, currTime, self.lastActivityIsBrowser, self.lastActivityUrl)
 
         self.lastActivityBundleIdentifier = self.bundleIdentifier
         self.lastActivityLocalizedName = self.localizedName
@@ -104,6 +105,6 @@ class FrontMostAppObserver:
             self.lastActivityUrl = None
 
 
-def runMac(db):
-    with FrontMostAppObserver(db):
+def runMac():
+    with FrontMostAppObserver():
         AppHelper.runConsoleEventLoop(installInterrupt=True)
